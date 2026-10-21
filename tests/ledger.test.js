@@ -1,0 +1,11 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {balance,recordAttendance,addPackage,status} from '../ledger.js';
+const student=()=>({packages:[{lessons:4,payment:'paid'}],attendance:[]});
+const entry=(extra={})=>({date:'2026-10-21',slot:'Lesson 1',status:'present',...extra});
+test('present deducts exactly one lesson; absent deducts none',()=>{let s=recordAttendance(student(),entry());assert.equal(balance(s),3);s=recordAttendance(s,entry({slot:'Lesson 2',status:'absent'}));assert.equal(balance(s),3);});
+test('duplicate attendance is rejected but another lesson slot is allowed',()=>{const s=recordAttendance(student(),entry());assert.throws(()=>recordAttendance(s,entry()),/already/);assert.equal(balance(recordAttendance(s,entry({slot:'Lesson 2'}))),2);});
+test('top-ups preserve attendance and package history',()=>{const before=recordAttendance(student(),entry());const after=addPackage(before,{lessons:12,payment:'pending'});assert.equal(balance(after),15);assert.equal(after.packages.length,2);assert.deepEqual(after.attendance,before.attendance);assert.equal(balance(before),3);});
+test('exhausted package blocks present but permits absent',()=>{const s={packages:[{lessons:1}],attendance:[entry()]};assert.throws(()=>recordAttendance(s,entry({slot:'Lesson 2'})),/No lessons/);assert.equal(balance(recordAttendance(s,entry({slot:'Lesson 2',status:'absent'}))),0);assert.equal(status(s),'Renew now');});
+test('invalid package sizes cannot corrupt balances',()=>{for(const lessons of [0,-1,1.5,NaN,501])assert.throws(()=>addPackage(student(),{lessons,payment:'paid'}));});
+test('renewal thresholds are based on remaining attendance credits',()=>{assert.equal(status(student()),'On track');assert.equal(status({packages:[{lessons:2}],attendance:[]}),'Running low');});
